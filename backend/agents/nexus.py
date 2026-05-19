@@ -156,10 +156,6 @@ print("✅ Nexus graph compiled successfully")
 # ─────────────────────────────────────────────
 
 async def run_swarm(event_type: str, event_payload: dict) -> PulseState:
-    """
-    Entry point for triggering the agent swarm.
-    Returns the final state after all agents have run.
-    """
     initial_state: PulseState = {
         "event_type": event_type,
         "event_payload": event_payload,
@@ -177,6 +173,27 @@ async def run_swarm(event_type: str, event_payload: dict) -> PulseState:
     print(f"\n🔄 Swarm triggered — event: {event_type} | run_id: {initial_state['run_id']}")
     
     final_state = await pulse_graph.ainvoke(initial_state)
+    
+    # Save to Supabase
+    try:
+        from db.supabase import save_agent_run, save_alert
+        await save_agent_run(
+            run_id=final_state["run_id"],
+            event_type=event_type,
+            event_payload=event_payload,
+            final_state=final_state
+        )
+        # Save individual alerts
+        for alert in final_state.get("alerts", []):
+            await save_alert(
+                run_id=final_state["run_id"],
+                source=alert["source"],
+                severity=alert["severity"],
+                message=alert["message"],
+                payload=alert
+            )
+    except Exception as e:
+        print(f"[Nexus] ⚠️ Failed to save to Supabase: {e}")
     
     print(f"✅ Swarm complete — {len(final_state['alerts'])} alerts generated")
     return final_state
