@@ -41,41 +41,79 @@ async def run_scribe(state: PulseState) -> dict:
     return await scribe.run(state)
 
 async def nexus_compile(state: PulseState) -> dict:
-    """
-    Nexus reads all agent results and decides:
-    - Which alerts to fire
-    - What to include in the daily briefing
-    """
     print("[Nexus] Compiling agent results...")
     
     alerts = []
 
-    # Check Scout result
     scout_result = state.get("scout_result") or {}
+    oracle_result = state.get("oracle_result") or {}
+    planner_result = state.get("planner_result") or {}
+
+    # Check Scout result
     if scout_result.get("risk_level") in ["high", "critical"]:
         alerts.append({
             "source": "Scout",
-            "message": f"High risk PR #{scout_result.get('pr_number')} — {scout_result.get('explanation')}",
+            "message": f"High risk PR #{scout_result.get('pr_number')} — {scout_result.get('explanation', '')[:100]}",
             "severity": scout_result.get("risk_level")
         })
+        # Send Slack alert
+        try:
+            from services.slack_client import send_scout_alert
+            send_scout_alert(
+                pr_number=scout_result.get("pr_number"),
+                risk_level=scout_result.get("risk_level"),
+                risk_score=scout_result.get("risk_score"),
+                explanation=scout_result.get("explanation", ""),
+                key_concerns=scout_result.get("key_concerns", []),
+                recommendation=scout_result.get("recommendation", ""),
+                repo_name=state["event_payload"].get("repo_name", "unknown"),
+                similar_incidents=scout_result.get("similar_incidents", []),
+                pr_url=state["event_payload"].get("pr_url")
+            )
+        except Exception as e:
+            print(f"[Nexus] ⚠️ Slack Scout alert failed: {e}")
 
     # Check Oracle result
-    oracle_result = state.get("oracle_result") or {}
     if oracle_result.get("anomaly_detected"):
         alerts.append({
             "source": "Oracle",
-            "message": f"Anomaly on {oracle_result.get('service')} — {oracle_result.get('prediction')}",
+            "message": f"Anomaly on {oracle_result.get('service')} — {oracle_result.get('prediction', '')[:100]}",
             "severity": oracle_result.get("severity")
         })
+        # Send Slack alert
+        try:
+            from services.slack_client import send_oracle_alert
+            send_oracle_alert(
+                service=oracle_result.get("service"),
+                severity=oracle_result.get("severity"),
+                prediction=oracle_result.get("prediction", ""),
+                estimated_breach_minutes=oracle_result.get("estimated_breach_minutes"),
+                recommended_action=oracle_result.get("recommended_action", ""),
+                likely_cause=oracle_result.get("likely_cause", ""),
+                anomalies=oracle_result.get("anomalies", [])
+            )
+        except Exception as e:
+            print(f"[Nexus] ⚠️ Slack Oracle alert failed: {e}")
 
     # Check Planner result
-    planner_result = state.get("planner_result") or {}
     if planner_result.get("sprint_failure_probability", 0) > 0.5:
         alerts.append({
             "source": "Planner",
-            "message": f"Sprint at risk — {planner_result.get('recommendation')}",
+            "message": f"Sprint at risk — {planner_result.get('recommendation', '')}",
             "severity": "medium"
         })
+
+    # Send daily briefing
+    try:
+        from services.slack_client import send_daily_briefing
+        send_daily_briefing(
+            alerts_count=len(alerts),
+            scout_result=scout_result,
+            oracle_result=oracle_result,
+            planner_result=planner_result
+        )
+    except Exception as e:
+        print(f"[Nexus] ⚠️ Slack briefing failed: {e}")
 
     return {
         "alerts": alerts,
