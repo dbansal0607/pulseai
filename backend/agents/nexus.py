@@ -121,7 +121,6 @@ def route_event(state: PulseState) -> str:
 def build_graph():
     graph = StateGraph(PulseState)
 
-    # Add all nodes
     graph.add_node("scout", run_scout)
     graph.add_node("oracle", run_oracle)
     graph.add_node("planner", run_planner)
@@ -129,21 +128,13 @@ def build_graph():
     graph.add_node("scribe", run_scribe)
     graph.add_node("nexus_compile", nexus_compile)
 
-    # Entry point — always start with scout
+    # Chain: scout → oracle → planner → scribe → nexus_compile
     graph.set_entry_point("scout")
-
-    # After scout → always run oracle
     graph.add_edge("scout", "oracle")
-
-    # After oracle → nexus_compile
-    graph.add_edge("oracle", "nexus_compile")
-
-    # Other agents route directly to nexus_compile
-    graph.add_edge("planner", "nexus_compile")
-    graph.add_edge("weaver", "nexus_compile")
+    graph.add_edge("oracle", "planner")
+    graph.add_edge("planner", "scribe")
     graph.add_edge("scribe", "nexus_compile")
-
-    # After nexus_compile → END
+    graph.add_edge("weaver", "nexus_compile")
     graph.add_edge("nexus_compile", END)
 
     return graph.compile()
