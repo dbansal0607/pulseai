@@ -129,12 +129,16 @@ def build_graph():
     graph.add_node("scribe", run_scribe)
     graph.add_node("nexus_compile", nexus_compile)
 
-    # Entry point — route_event decides first node
-    graph.set_conditional_entry_point(route_event)
+    # Entry point — always start with scout
+    graph.set_entry_point("scout")
 
-    # After each specialist agent → always go to nexus_compile
-    graph.add_edge("scout", "nexus_compile")
+    # After scout → always run oracle
+    graph.add_edge("scout", "oracle")
+
+    # After oracle → nexus_compile
     graph.add_edge("oracle", "nexus_compile")
+
+    # Other agents route directly to nexus_compile
     graph.add_edge("planner", "nexus_compile")
     graph.add_edge("weaver", "nexus_compile")
     graph.add_edge("scribe", "nexus_compile")
